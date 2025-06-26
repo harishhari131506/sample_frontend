@@ -1,0 +1,225 @@
+name: Deploy Vitest Coverage Report
+on:
+  push:
+    branches: [main]
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for commit info
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests and generate coverage
+        run: npm run coverage
+      
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup coverage directory structure
+        run: |
+          # Get commit info
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d_%H-%M-%S')
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' | sed 's/[^a-zA-Z0-9 ]//g' | tr ' ' '-')
+          
+          # Create unique directory name
+          COVERAGE_DIR="${COMMIT_DATE}_${COMMIT_SHA}_${COMMIT_MSG}"
+          
+          # Ensure gh-pages directory exists
+          mkdir -p gh-pages
+          cd gh-pages
+          
+          # Create coverage directory
+          mkdir -p "reports/${COVERAGE_DIR}"
+          
+          # Copy coverage files
+          cp -r ../coverage/* "reports/${COVERAGE_DIR}/"
+          
+          # Update latest symlink
+          rm -f reports/latest
+          ln -sf "${COVERAGE_DIR}" reports/latest
+          
+          # Generate index.html with all reports
+          cat > index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Coverage Reports</title>
+              <style>
+                  body { 
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                      max-width: 1200px;
+                      margin: 0 auto;
+                      padding: 20px;
+                      background: #f5f5f5;
+                  }
+                  .header {
+                      background: white;
+                      padding: 30px;
+                      border-radius: 8px;
+                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                      margin-bottom: 30px;
+                  }
+                  .latest-report {
+                      background: #e8f5e8;
+                      border: 2px solid #4caf50;
+                      padding: 20px;
+                      border-radius: 8px;
+                      margin-bottom: 30px;
+                  }
+                  .reports-grid {
+                      display: grid;
+                      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+                      gap: 20px;
+                  }
+                  .report-card {
+                      background: white;
+                      padding: 20px;
+                      border-radius: 8px;
+                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                      transition: transform 0.2s;
+                  }
+                  .report-card:hover {
+                      transform: translateY(-2px);
+                      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+                  }
+                  .report-title { 
+                      font-size: 1.2em; 
+                      font-weight: 600; 
+                      margin-bottom: 10px;
+                      color: #333;
+                  }
+                  .report-meta { 
+                      color: #666; 
+                      font-size: 0.9em;
+                      margin-bottom: 15px;
+                  }
+                  .btn {
+                      display: inline-block;
+                      padding: 10px 20px;
+                      background: #007bff;
+                      color: white;
+                      text-decoration: none;
+                      border-radius: 5px;
+                      font-weight: 500;
+                      transition: background 0.2s;
+                  }
+                  .btn:hover { background: #0056b3; }
+                  .btn-success { background: #28a745; }
+                  .btn-success:hover { background: #1e7e34; }
+                  h1 { color: #333; margin-bottom: 10px; }
+                  .subtitle { color: #666; margin-bottom: 0; }
+              </style>
+          </head>
+          <body>
+              <div class="header">
+                  <h1>📊 Vitest Coverage Reports</h1>
+                  <p class="subtitle">Test coverage reports for all commits</p>
+              </div>
+              
+              <div class="latest-report">
+                  <h2>🚀 Latest Report</h2>
+                  <p>View the most recent coverage report:</p>
+                  <a href="reports/latest/index.html" class="btn btn-success">View Latest Coverage</a>
+              </div>
+              
+              <h2>📈 All Reports</h2>
+              <div class="reports-grid" id="reports">
+                  <!-- Reports will be populated by JavaScript -->
+              </div>
+              
+              <script>
+                  // This will be populated by the GitHub Action
+                  const reports = [REPORTS_PLACEHOLDER];
+                  
+                  function formatDate(dateStr) {
+                      const parts = dateStr.split('_');
+                      if (parts.length >= 2) {
+                          const date = parts[0].replace(/-/g, '/');
+                          const time = parts[1].replace(/-/g, ':');
+                          return new Date(date + ' ' + time).toLocaleString();
+                      }
+                      return dateStr;
+                  }
+                  
+                  function populateReports() {
+                      const container = document.getElementById('reports');
+                      
+                      reports.forEach(report => {
+                          const card = document.createElement('div');
+                          card.className = 'report-card';
+                          
+                          const title = report.name.split('_').slice(2).join(' ') || 'Coverage Report';
+                          const commitSha = report.name.split('_')[1] || 'unknown';
+                          const dateStr = formatDate(report.name);
+                          
+                          card.innerHTML = `
+                              <div class="report-title">${title}</div>
+                              <div class="report-meta">
+                                  📅 ${dateStr}<br>
+                                  🔗 Commit: ${commitSha}
+                              </div>
+                              <a href="reports/${report.name}/index.html" class="btn">View Report</a>
+                          `;
+                          
+                          container.appendChild(card);
+                      });
+                  }
+                  
+                  populateReports();
+              </script>
+          </body>
+          </html>
+          EOF
+          
+          # Get list of all reports and update the JavaScript
+          REPORTS_JSON="["
+          for dir in reports/*/; do
+              if [ -d "$dir" ] && [ "$(basename "$dir")" != "latest" ]; then
+                  REPORTS_JSON="${REPORTS_JSON}{\"name\":\"$(basename "$dir")\"},"
+              fi
+          done
+          REPORTS_JSON="${REPORTS_JSON%,}]"
+          
+          # Replace placeholder in index.html
+          sed -i "s/\[REPORTS_PLACEHOLDER\]/$REPORTS_JSON/g" index.html
+          
+          # Set environment variable for commit step
+          echo "COVERAGE_DIR=${COVERAGE_DIR}" >> $GITHUB_ENV
+      
+      - name: Commit and push to gh-pages
+        run: |
+          cd gh-pages
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Add coverage report: ${{ env.COVERAGE_DIR }}" || exit 0
+          git push
+      
+      - name: Clean up old reports (keep last 50)
+        run: |
+          cd gh-pages/reports
+          # Keep only the 50 most recent reports (excluding 'latest' symlink)
+          ls -dt */ | grep -v '^latest/$' | tail -n +51 | xargs rm -rf || true
+          
+          # Commit cleanup if anything was removed
+          cd ..
+          git add .
+          git commit -m "Clean up old coverage reports" || exit 0
+          git push || exit 0
