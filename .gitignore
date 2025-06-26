@@ -30,4 +30,3 @@ storybook-static
 vitest.shims.d.ts
 vite-env.d.ts
 coverage
-package-lock.json
