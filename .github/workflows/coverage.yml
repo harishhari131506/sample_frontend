@@ -16,8 +16,11 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      - name: Install dependencies
-        run: npm i
+      - name: Clean install (to fix rollup native bug)
+        run: |
+            rm -rf node_modules package-lock.json
+            npm install
+
       
       - name: Run tests and generate coverage
         run: npm run coverage
